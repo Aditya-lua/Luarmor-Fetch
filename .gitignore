@@ -26,3 +26,6 @@ venv/
 .env
 *.key
 script_key.txt
+
+# local-only notes (not committed)
+*.local.md
