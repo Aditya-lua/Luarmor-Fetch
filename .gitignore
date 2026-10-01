@@ -1,0 +1,28 @@
+# Tool by @adi.codz (Discord)
+# Captured material, sandbox traces and transient payloads never belong in git.
+work/*
+!work/.gitkeep
+
+# Captured protocol artifacts (loaders rotate, responses are nonce-bound)
+*.raw.txt
+*.cfg.json
+*.bin
+fresh_loader.lua
+sephal_primed.lua
+primed.lua
+init_cached.lua
+resp_*.luau
+luarmor_out/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Secrets / local config (script keys, HWIDs, cookies — never commit)
+.env
+*.key
+script_key.txt
