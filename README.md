@@ -117,7 +117,10 @@ LRM_SCRIPT_KEY=<KEY> python main.py two-phase \
 
 Runs the whole protocol in **one** luau process: build the handshake →
 `NEEDFETCH` yield → fetch live → plant the response → resume. Same process =
-same per-process nonce, so the response decrypts in-sandbox.
+same per-process nonce, so the response decrypts in-sandbox. Each
+`loadstring`'d client chunk the run emits is recovered automatically to
+`work/out/recovered_<key>.lua`. On a successful chain with a valid key this is
+the decrypted Luarmor client (typically a further Luraph-obfuscated layer).
 
 ### Common options
 

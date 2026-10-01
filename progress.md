@@ -4,6 +4,59 @@ Chronological research/engineering log for Luarmor-Fetch. Newest entries on top.
 
 ---
 
+## 2026-10-01 — Full chain completes: past State848, client recovered
+
+First end-to-end run with a **real script key** (fresh loader, cached sephal
+init, compatible locally-built luau). The chain ran to success — **no
+State848, no kick**:
+
+```
+round 1 NEEDFETCH  ->  session-response (630 B)      handshake accepted
+round 2 NEEDFETCH  ->  json (412,648 B)              encrypted client chunk
+round 3 NEEDFETCH  ->  json (230,077 B)              encrypted client chunk
+loadstring() of 624,009 bytes                        decrypted client
+run finished: fetches=3 states=- kicked=False
+```
+
+The 624,009-byte `loadstring`'d chunk is the decrypted Luarmor client:
+`-- This file was protected using Luraph Obfuscator v14.7 [https://lura.ph/]`.
+The tool now recovers it automatically (`fetcher.run_two_phase` scans the run's
+`\0<nonce>CHUNK` markers → `work/out/recovered_<key>.lua`).
+
+### Root cause of the previous State848 wall
+
+With the placeholder key the chain always died at State848 *before* a second
+request, so the serve handler's second-round path was never exercised. The real
+key makes round 1 decrypt, and the loader issues a **second** request (the
+client-chunk fetch). That URL isn't planted yet (it's the driver's cue to fetch
+it), so it takes the `urls.__lrm_plant` **plant-MISS** branch — which should log
+and fall through to `NEEDFETCH`. But the diagnostics in that branch called
+`R.math.min`/`R.math.max`, and `R.math` is nil in that handler's scope (the only
+`R.math` site in `envlog.luau`, hence latent). The nil-index crash aborted the
+run → "Luarmor V4 loader failed to fetch a chunk: ...attempt to index nil with
+'min'" → the baked-in Loader-Failed UI (a 281-byte spawner) → Kick.
+
+### The fix (sandbox dependency, not this repo)
+
+`runtime/envlog.luau` plant-MISS diagnostics made math-free (plain comparisons
+instead of `R.math.min`/`R.math.max`) so a MISS logs and falls through to the
+`NEEDFETCH` yield. With that, round 2/3 fetch cleanly and the client decrypts.
+
+> This edit lives in the **discovered Deobfuscator-Luraph-V15 clone**, not in
+> Luarmor-Fetch (the sandbox is not vendored here). It is a one-line-class,
+> reversible change and should be upstreamed to that repo separately. Recorded
+> here so the result is reproducible.
+
+### Where it stands now
+
+- The outer Luarmor protocol is **fully traversed**: auth → session → client
+  chunk fetch → decrypt → load. The recovered payload is a *further* layer
+  (Luraph Obfuscator v14.7); peeling that is the parent repo's Luraph
+  devirtualizer's job, a separate stage from the Luarmor loader chain.
+- Reproduce: `LRM_SCRIPT_KEY=<key> python main.py two-phase --loader-url <fresh>
+  --init <cached sephal init> --output work/out` (needs a luau that runs on the
+  host and the envlog plant-MISS fix above).
+
 ## 2026-10-01 — Extraction into a standalone, Node-free tool
 
 Extracted the working Luarmor tooling out of **Deobfuscator-Luraph-V15**
