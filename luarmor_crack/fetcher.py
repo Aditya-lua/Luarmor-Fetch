@@ -353,8 +353,34 @@ def run_two_phase(args):
     states = sorted(set(re.findall(r"Error: (State\d+)", text)))
     chunks = re.findall(r"loadstring\(\) of (\d+) bytes", text)
     kicked = "LocalPlayer:Kick" in text
+
+    # recover any loadstring'd client chunks the run emitted. The runtime wraps
+    # each as \0<nonce>CHUNK <key>\n<hex>\n; match it nonce-agnostically (the
+    # per-run nonce varies and need not be reconstructed here). On a successful
+    # chain this hex decodes to the decrypted client payload.
+    recovered = []
+    for key, hx in re.findall(r"\x00[0-9a-f]*CHUNK (\S+)\n([0-9a-f]+)\n", text):
+        try:
+            src = bytes.fromhex(hx).decode("latin-1")
+        except ValueError:
+            continue
+        safe = re.sub(r"[^A-Za-z0-9_.-]", "_", key)[:48]
+        path = os.path.join(outdir, "recovered_%s.lua" % safe)
+        with open(path, "w", encoding="latin-1") as f:
+            f.write(src)
+        recovered.append((path, len(src)))
+
     print("[3] run finished: fetches=%d states=%s loadstrings=%s kicked=%s"
           % (nfetch, states or "-", chunks or "-", kicked))
+    for path, n in recovered:
+        head = ""
+        try:
+            with open(path, encoding="latin-1") as f:
+                head = f.readline().strip()[:70]
+        except OSError:
+            pass
+        print("    [+] recovered client chunk: %s (%d bytes) %s" % (path, n, head))
     print("[+] artifacts in %s" % outdir)
     proc.kill()
-    return {"fetches": nfetch, "states": states, "loadstrings": chunks, "kicked": kicked}
+    return {"fetches": nfetch, "states": states, "loadstrings": chunks,
+            "kicked": kicked, "recovered": [p for p, _ in recovered]}
