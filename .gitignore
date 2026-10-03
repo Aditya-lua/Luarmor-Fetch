@@ -14,6 +14,13 @@ init_cached.lua
 resp_*.luau
 luarmor_out/
 
+# JNKIE artifacts (delivered payloads are key-gated; never commit them)
+payload_*.lua
+payload_*.luauc
+fetch_*.json
+ivory_loader.lua
+jnkie_script.lua
+
 # Python
 __pycache__/
 *.py[cod]

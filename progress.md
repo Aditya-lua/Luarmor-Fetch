@@ -4,6 +4,64 @@ Chronological research/engineering log for Luarmor-Fetch. Newest entries on top.
 
 ---
 
+## 2026-10-03 — JNKIE fetcher added (sandbox-free sibling tool)
+
+Built a second standalone tool, `jnkie.py` + `jnkie_crack/`, for the **JNKIE**
+script-whitelist service, mirroring the Luarmor-Fetch module layout
+(`common`/`loader`/`fetcher`/`probe`) but with **no sandbox dependency**.
+
+### Protocol (reversed from the live loaders)
+
+JNKIE's loader is *unobfuscated* Lua. Reversing the two public loaders
+(`jnkie.com/loaders/ivory` and a `luascripts/public/<id>/download` stub) showed
+the entire secret is one HTTP call:
+
+```
+POST https://api.jnkie.com/api/v1/luascripts/delivery/<script_id>?v=2&errors=text
+     Content-Type: text/plain        body = the plaintext script_key
+  403 LDR-DENIED:KEY_INVALID\n<msg>  key rejected (also: empty key)
+  200 https://cdn.jnkie.com/<hash>.lua   -> GET it (url-body indirection)
+  302 + Location: ...                    -> GET it (redirect indirection)
+  then loadstring(body)()
+```
+
+No VM, no signed request, no per-process nonce — so unlike the Luarmor chain,
+nothing needs a Luau sandbox. Two loader variants are handled: the single-id
+**script-key** loader, and the **game-loader** bundle
+(`local S,P,G = {ids…},{[placeId]=i},{[gameId]=i}`; `i = P[PlaceId] or
+G[GameId]`) which maps the current Roblox game to one of its scripts (the `ivory`
+sample bundles 76 scripts keyed by GameId). Full writeup in
+`docs/JNKIE_NOTES.md`.
+
+### What the tool does
+
+- `jnkie.py probe <file>` — static detection + IOCs (variant, delivery host,
+  script ids, place/game coverage, kick/error strings), no network.
+- `jnkie.py resolve --slug/--script-id/...` — fetch + parse a loader to its
+  metadata (the id bundle + maps), no key.
+- `jnkie.py fetch --slug ivory --game-id <id> --key <KEY>` (or `--script-id`,
+  `--index`, `--place-id`) — reproduce the delivery POST, follow the CDN url, and
+  save the recovered `loadstring`'d payload to `work/out/payload_<id16>.lua`.
+
+### Validation
+
+- Live: `resolve`/`probe` verified against the real `ivory` game-loader (76
+  scripts, 76 GameId entries) and the script-key stub; `fetch` reproduces the
+  delivery request and correctly reports `LDR-DENIED:KEY_INVALID` without a valid
+  key (the authorized-request soft-fail, by design — no key bypass).
+- Unit tests: 43 new JNKIE tests (reference resolution, delivery/payload
+  classification, denial parsing, brace-balanced `S,P,G` parsing, variant
+  selection, probe detection/IOCs/split) — full suite **64/64 pass**
+  (`python -m unittest discover -s tests`), no network/sandbox needed.
+
+### Frontier
+
+The delivered body is a further JNKIE-obfuscated layer (its own VM / constant
+encryption), saved verbatim; peeling it is a separate devirt stage, analogous to
+the Luraph layer under a recovered Luarmor client.
+
+---
+
 ## 2026-10-01 — Full chain completes: past State848, client recovered
 
 First end-to-end run with a **real script key** (fresh loader, cached sephal

@@ -9,6 +9,11 @@ plus a static analyzer for captured Luarmor whitelist clients.
 
 The full protocol reference is in [docs/LUARMOR_NOTES.md](docs/LUARMOR_NOTES.md).
 
+> **Also in this repo: a JNKIE fetcher** (`jnkie.py` + `jnkie_crack/`) — the same
+> idea for the **JNKIE** script-whitelist service. JNKIE's loader is unobfuscated
+> and its only secret is a plaintext-key delivery POST, so that tool needs **no
+> sandbox at all**. Jump to [JNKIE fetcher](#jnkie-fetcher-jnkiepy).
+
 ---
 
 ## Scope and authorization
@@ -160,14 +165,81 @@ and the split logic — no sandbox or network required.
 - **CDN gate.** `cdn.luarmor.net/v4_init_sephal.lua` serves the real init only
   to executor clients; pass a cached copy with `--init`.
 
+## JNKIE fetcher (`jnkie.py`)
+
+A second, fully standalone tool in this repo for the **JNKIE** script-whitelist
+service. JNKIE's loader is *unobfuscated* Lua whose only secret is the delivery
+handshake — a single `POST` of your plaintext `script_key` — so there is **no VM,
+no sandbox, and no sibling-repo dependency** (standard library only). Full
+protocol reference: [docs/JNKIE_NOTES.md](docs/JNKIE_NOTES.md).
+
+Two loader variants are handled:
+
+- **script-key loader** (`api.jnkie.com/.../luascripts/public/<id>/download`) — one script id.
+- **game-loader** (`jnkie.com/loaders/<slug>`) — a bundle that maps the current
+  Roblox `PlaceId`/`GameId` to one of many scripts.
+
+```
+python jnkie.py <command> [options]
+```
+
+Every run prints: `[adi.codz] JNKIE fetcher -- Tool by @adi.codz (Discord)`
+
+### probe — static loader/payload analysis (no network)
+
+```
+python jnkie.py probe loader.lua
+python jnkie.py probe loader.lua --json
+python jnkie.py probe loader.lua --split out/     # writes loader.json
+```
+
+Reports variant, delivery host, script ids, place/game coverage, and IOCs.
+Exit code `0` = JNKIE loader detected, `2` = not one.
+
+### resolve — resolve + parse a loader (no key)
+
+```
+python jnkie.py resolve --slug ivory
+python jnkie.py resolve --script-id <64-hex> --json
+```
+
+Fetches the loader (following the public-edge → CDN 302 chain) and prints its
+metadata — the script-id bundle and the place/game maps — without any key.
+
+### fetch — delivery handshake + recover the payload
+
+```
+# straight to delivery with a known script id:
+JNKIE_SCRIPT_KEY=<KEY> python jnkie.py fetch --script-id <64-hex>
+
+# via a game-loader slug, picking the script for a Roblox game/place/index:
+python jnkie.py fetch --slug ivory --game-id <GameId> --key <KEY>
+python jnkie.py fetch --slug ivory --index 1 --key <KEY>
+```
+
+POSTs the key to the delivery edge, follows the CDN url (body or `Location`), and
+saves the final `loadstring`'d body to `work/out/payload_<id16>.lua` (or `.luauc`
+for compiled bytecode) plus a `fetch_<id>.json` report. Without a valid key the
+edge returns `LDR-DENIED` and the tool reports it and stops — it reproduces the
+*authorized* executor request, it does not bypass key auth.
+
+| Option | Meaning |
+|--------|---------|
+| `--slug NAME` / `--loader-url URL` / `--loader FILE` / `--script-id ID` | loader source |
+| `--key KEY` / `JNKIE_SCRIPT_KEY` | your script key |
+| `--place-id` / `--game-id` / `--index` | pick a script from a game-loader bundle |
+| `--output DIR` | artifact directory (default `work/out`, gitignored) |
+
 ## Layout
 
 ```
-luarmor_crack/   common.py  loader.py  fetcher.py  probe.py  __init__.py
+luarmor_crack/   common.py  loader.py  fetcher.py  probe.py  __init__.py   (Luarmor v4)
+jnkie_crack/     common.py  loader.py  fetcher.py  probe.py  __init__.py   (JNKIE, sandbox-free)
 tests/           test_loader.py  test_common.py  test_probe.py
-docs/            LUARMOR_NOTES.md
+                 test_jnkie_loader.py  test_jnkie_common.py  test_jnkie_probe.py
+docs/            LUARMOR_NOTES.md  JNKIE_NOTES.md
 work/            runtime artifacts (gitignored)
-main.py          CLI
+main.py          Luarmor CLI          jnkie.py   JNKIE CLI
 ```
 
 ## Credits
