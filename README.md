@@ -217,16 +217,22 @@ python jnkie.py fetch --slug ivory --game-id <GameId> --key <KEY>
 python jnkie.py fetch --slug ivory --index 1 --key <KEY>
 ```
 
-POSTs the key to the delivery edge, follows the CDN url (body or `Location`), and
-saves the final `loadstring`'d body to `work/out/payload_<id16>.lua` (or `.luauc`
-for compiled bytecode) plus a `fetch_<id>.json` report. Without a valid key the
-edge returns `LDR-DENIED` and the tool reports it and stops — it reproduces the
-*authorized* executor request, it does not bypass key auth.
+POSTs the key **and a hardware fingerprint** to the delivery edge, follows the
+CDN url (body or `Location`), and saves the final `loadstring`'d body to
+`work/out/payload_<id16>.lua` (or `.luauc` for compiled bytecode) plus a
+`fetch_<id>.json` report. The fingerprint is required — real executors inject it
+automatically; the tool sends `--hwid`/`JNKIE_HWID` or a stable derived value.
+Without a valid key the edge returns `LDR-DENIED` and the tool reports it and
+stops — it reproduces the *authorized* executor request, it does not bypass auth.
+
+The delivered body is typically a **Luraph v15** chunk — peel it with the
+Deobfuscator-Luraph-V15 project (same inner layer as a recovered Luarmor client).
 
 | Option | Meaning |
 |--------|---------|
 | `--slug NAME` / `--loader-url URL` / `--loader FILE` / `--script-id ID` | loader source |
 | `--key KEY` / `JNKIE_SCRIPT_KEY` | your script key |
+| `--hwid FP` / `JNKIE_HWID` | hardware fingerprint (an HWID-locked key needs its exact registered value) |
 | `--place-id` / `--game-id` / `--index` | pick a script from a game-loader bundle |
 | `--output DIR` | artifact directory (default `work/out`, gitignored) |
 

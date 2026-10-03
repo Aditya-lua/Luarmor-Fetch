@@ -49,22 +49,26 @@ def resolve_loader(ref, timeout=25):
 # ---------------------------------------------------------------------------
 # the delivery handshake
 # ---------------------------------------------------------------------------
-def deliver(script_id, key, timeout=25):
+def deliver(script_id, key, hwid=None, timeout=25):
     """Run the delivery handshake for one script id with the given key.
 
-    Returns a result dict: ``{script_id, status, kind, denied(bool),
-    code, message, final_url, payload(str|None), payload_kind, bytes}``.
+    ``hwid`` is the hardware fingerprint the edge requires (see
+    ``common.normalize_hwid``); an HWID-locked key needs its exact registered
+    value. Returns a result dict: ``{script_id, status, kind, denied(bool),
+    code, message, final_url, payload(str|None), payload_kind, bytes, hwid}``.
     Never raises on a protocol-level denial -- that is reported in the dict.
     """
     if not common.SCRIPT_ID_RE.match(script_id):
         raise ValueError("not a 64-hex script id: %r" % script_id)
+    fingerprint = common.normalize_hwid(hwid)
     url = common.delivery_url(script_id)
     status, headers, body = common.http(
-        url, method="POST", headers={"Content-Type": "text/plain"},
+        url, method="POST",
+        headers={"Content-Type": "text/plain", common.HWID_HEADER: fingerprint},
         body=key, timeout=timeout)
     kind = common.classify_delivery(status, headers, body)
     out = {"script_id": script_id, "status": status, "kind": kind,
-           "denied": False, "code": None, "message": None,
+           "denied": False, "code": None, "message": None, "hwid": fingerprint,
            "final_url": None, "payload": None, "payload_kind": None, "bytes": 0}
 
     if kind == "denied":
@@ -140,16 +144,20 @@ def run_fetch(args):
     report["selected_by"] = how
 
     # -- deliver --------------------------------------------------------------
+    hwid = getattr(args, "hwid", None) or os.environ.get("JNKIE_HWID")
     if not key:
         print("[2] no script key (--key / JNKIE_SCRIPT_KEY): the delivery edge "
               "will return LDR-DENIED by design")
     else:
         print("[2] running the delivery handshake ...")
-    res = deliver(script_id, key or "")
+    res = deliver(script_id, key or "", hwid=hwid)
     report["delivery"] = {k: v for k, v in res.items() if k != "payload"}
 
     if res["denied"]:
         print("    [!] DENIED %s -- %s" % (res["code"], res["message"]))
+        if res["code"].endswith("HWID_REQUIRED") or res["code"].endswith("HWID_MISMATCH"):
+            print("        the key is HWID-locked: pass the machine's registered "
+                  "fingerprint with --hwid (or JNKIE_HWID)")
         return report
     if not res["payload"]:
         print("    [!] no payload recovered: %s" % (res.get("message") or res["kind"]))

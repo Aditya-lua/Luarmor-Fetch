@@ -45,6 +45,10 @@ def build_parser():
     _add_source_args(f, require=False)
     f.add_argument("--key", metavar="KEY",
                    help="script key (or set JNKIE_SCRIPT_KEY in the env)")
+    f.add_argument("--hwid", metavar="FP",
+                   help="hardware fingerprint the delivery edge requires (or set "
+                        "JNKIE_HWID); an HWID-locked key needs its exact registered "
+                        "value. A stable one is derived if omitted")
     f.add_argument("--index", type=int, metavar="N",
                    help="1-based script index into a game-loader bundle")
     f.add_argument("--place-id", type=int, metavar="ID",

@@ -64,13 +64,31 @@ It then runs the **same** delivery handshake on `S[i]`. So the game you are in
 selects which protected script you get. `jnkie_crack` reproduces this selection
 with `--place-id` / `--game-id` / `--index`.
 
-## 3. The delivery answer
+## 3. The delivery request — key **and HWID**
 
-POST body = the key, nothing else. Observed answers:
+POST body = the key. But the key alone gets `LDR-DENIED:HWID_REQUIRED`: the edge
+also wants a **hardware fingerprint**, which real executors inject into their
+HTTP request fn *automatically* (the loader never sets it in `Headers`, so it is
+invisible in the stub). The edge reads it from any of these header names:
+
+```
+Fingerprint:     <hwid>      # the generic one jnkie_crack sends
+X-Fingerprint:   <hwid>
+Syn-Fingerprint: <hwid>      # Synapse-style
+```
+
+Observed: for a non-HWID-locked key, *any* fingerprint value is accepted (it
+binds on first use); an HWID-locked key needs its exact registered value, else
+`LDR-DENIED:HWID_MISMATCH`. `jnkie_crack` sends `--hwid` / `JNKIE_HWID`, or a
+stable machine-derived 32-hex when omitted (`common.normalize_hwid`).
+
+### The delivery answer
 
 | Status | Body | Meaning |
 |---|---|---|
-| `403` | `LDR-DENIED:KEY_INVALID\n<message>` | key rejected (also used for an empty key, with a "No key provided" message) |
+| `403` | `LDR-DENIED:KEY_INVALID\n<message>` | key rejected (also for an empty key) |
+| `403` | `LDR-DENIED:HWID_REQUIRED` | no fingerprint header sent |
+| `403` | `LDR-DENIED:HWID_MISMATCH` | fingerprint ≠ the key's registered HWID |
 | `200` | `https://cdn.jnkie.com/<hash>.lua` | url-body indirection → GET it for the script |
 | `302/303` | (empty) + `Location:` | redirect indirection → GET the `Location` |
 | `200` | Lua/bytecode | the script inline (no indirection) |
@@ -103,11 +121,13 @@ reference ──resolve──► loader stub ──parse──► {variant, scri
 
 ## 5. Delivered payload
 
-The thing `loadstring` runs is a further JNKIE-obfuscated layer (its own VM /
-constant encryption), analogous to the Luraph layer under a recovered Luarmor
-client. `jnkie_crack` saves it verbatim (`payload_<id16>.lua`, or `.luauc` when
-it is compiled Luau bytecode); peeling that layer is a separate devirtualization
-stage, not part of the delivery fetch.
+The thing `loadstring` runs is a further obfuscated layer, saved verbatim
+(`payload_<id16>.lua`, or `.luauc` for compiled Luau bytecode). In practice this
+is a **Luraph Obfuscator v15** chunk — identical to the layer under a recovered
+Luarmor client — so peeling it is the **Deobfuscator-Luraph-V15** project's job,
+a separate devirtualization stage, not part of the delivery fetch. Example: the
+`ivory` / GameId `1119466531` script (Legends of Speed) delivers a ~950 KB body
+whose header is `-- This file was protected using Luraph Obfuscator v15.0`.
 
 ## 6. Scope / limits
 

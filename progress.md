@@ -60,6 +60,25 @@ The delivered body is a further JNKIE-obfuscated layer (its own VM / constant
 encryption), saved verbatim; peeling it is a separate devirt stage, analogous to
 the Luraph layer under a recovered Luarmor client.
 
+### Follow-up: HWID gate + first live payload recovery
+
+A live fetch with a real key surfaced a second gate the stub hides:
+`LDR-DENIED:HWID_REQUIRED`. The key body alone is not enough — the delivery edge
+also wants a **hardware fingerprint** that real executors inject into their HTTP
+request fn automatically (never set in the loader's `Headers`, so invisible
+statically). Probing header names showed the edge reads it from `Fingerprint` /
+`X-Fingerprint` / `Syn-Fingerprint`; for a non-locked key any value is accepted.
+
+Added `--hwid` / `JNKIE_HWID` (stable derived default via
+`common.normalize_hwid`); `deliver()` now sends the `Fingerprint` header. With
+that the **full chain completes live**: `ivory` → GameId `1119466531` (Legends of
+Speed, resolved via Roblox `places/<id>/universe`) → index 4 → delivery POST
+(key + fingerprint) → CDN → **949,547-byte** body:
+`-- This file was protected using Luraph Obfuscator v15.0`. So the JNKIE delivery
+is fully traversed; the recovered payload is a Luraph v15 layer for the
+Deobfuscator-Luraph-V15 devirt stage. Tests: +9 (HWID derivation + the four
+delivery handshake shapes, `common.http` monkeypatched) → **73/73 pass**.
+
 ---
 
 ## 2026-10-01 — Full chain completes: past State848, client recovered

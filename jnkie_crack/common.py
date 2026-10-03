@@ -7,6 +7,7 @@ delivery-answer classification, and delivered-payload classification.
 Nothing here does protocol parsing -- these are pure, reusable helpers kept
 small so the loader/fetcher/probe modules stay testable. Standard library only.
 """
+import hashlib
 import os
 import re
 import urllib.error
@@ -29,6 +30,13 @@ SITE_LOADER_TMPL = "https://jnkie.com/loaders/%s"                         # 302 
 # exactly this). errors=text asks the edge for this plaintext shape.
 DENIAL_PREFIX = "LDR-DENIED"
 SCRIPT_ID_RE = re.compile(r"^[0-9a-f]{64}$")
+
+# The delivery edge requires a hardware fingerprint that real executors inject
+# into their HTTP request fn automatically (the loader never sets it itself).
+# Omitting it yields LDR-DENIED:HWID_REQUIRED. The edge reads it from any of
+# these header names (executor-dependent); we send the generic one.
+HWID_HEADER = "Fingerprint"
+HWID_HEADER_ALIASES = ("Fingerprint", "X-Fingerprint", "Syn-Fingerprint")
 
 
 class JnkieError(RuntimeError):
@@ -101,6 +109,21 @@ def resolve_reference(ref):
 
 def delivery_url(script_id):
     return DELIVERY_TMPL % script_id
+
+
+def normalize_hwid(hwid):
+    """Return a plausible executor HWID/fingerprint string.
+
+    An HWID-locked key must receive the *exact* fingerprint it was registered to
+    (pass your real one). When none is given we derive a stable 32-hex value so a
+    non-locked key still passes the HWID_REQUIRED gate and the same machine
+    reproduces the same fingerprint across runs."""
+    if hwid:
+        return hwid
+    seed = (os.environ.get("JNKIE_HWID")
+            or "%s|%s" % (os.environ.get("HOSTNAME", ""), os.getuid()
+                          if hasattr(os, "getuid") else os.environ.get("USERNAME", "")))
+    return hashlib.sha256(seed.encode("utf-8", "replace")).hexdigest()[:32]
 
 
 # --- classification ----------------------------------------------------------
